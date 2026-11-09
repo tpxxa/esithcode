@@ -1,0 +1,297 @@
+import os
+import sys
+from datetime import datetime
+from typing import Optional
+
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from web3 import Web3
+from web3.exceptions import TransactionNotFound
+
+# -------------------------------------------------------------------
+# 1. DATABASE CONFIGURATION & ORM MODELS
+# -------------------------------------------------------------------
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./esith_launchpad.db")
+
+engine = create_engine(
+    DATABASE_URL, 
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+class TransactionRecord(Base):
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tx_hash = Column(String(66), unique=True, index=True, nullable=False)
+    wallet_address = Column(String(42), index=True, nullable=False)
+    tx_type = Column(String(20), nullable=False)  # "MINT" or "TRANSFER"
+    amount_tokens = Column(Float, nullable=False)
+    cost_eth = Column(Float, nullable=True)
+    block_number = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WebWallet(Base):
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    address = Column(String(42), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Initialize Database Tables
+Base.metadata.create_all(bind=engine)
+
+
+# -------------------------------------------------------------------
+# 2. WEB3 RPC & FLASK APP INITIALIZATION
+# -------------------------------------------------------------------
+app = Flask(__name__)
+CORS(app)  # Enable Cross-Origin Resource Sharing
+
+# List of reliable Sepolia RPC endpoints for automatic failover
+FALLBACK_RPC_URLS = [
+    os.getenv("ETH_RPC_URL", "https://ethereum-sepolia-rpc.publicnode.com"),
+    "https://sepolia.drpc.org",
+    "https://rpc.sepolia.ethpandaops.io",
+    "https://sepolia.gateway.tenderly.co"
+]
+
+
+def init_web3():
+    """Initializes Web3 provider with fallback support across active RPC nodes."""
+    for url in FALLBACK_RPC_URLS:
+        try:
+            w3_instance = Web3(Web3.HTTPProvider(url, request_kwargs={'timeout': 10}))
+            if w3_instance.is_connected():
+                print(f" Connected to Ethereum RPC: {url}")
+                return w3_instance, url
+        except Exception as e:
+            print(f" Failed to connect to {url}: {e}")
+    # Return last attempted instance if all fail
+    return Web3(Web3.HTTPProvider(FALLBACK_RPC_URLS[0])), FALLBACK_RPC_URLS[0]
+
+
+w3, ACTIVE_RPC_URL = init_web3()
+
+
+def get_db() -> Session:
+    """Helper to retrieve a fresh database session."""
+    return SessionLocal()
+
+
+# -------------------------------------------------------------------
+# 3. FRONTEND & API ROUTES
+# -------------------------------------------------------------------
+
+@app.route("/", methods=["GET"])
+def serve_frontend_or_status():
+    """
+    Serves esith.html if it exists in the current directory;
+    otherwise returns status JSON.
+    """
+    if os.path.exists("esith.html"):
+        return send_from_directory('.', 'esith.html')
+    
+    return health_check()
+
+
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    """Returns server and blockchain connection status."""
+    is_connected = w3.is_connected()
+    chain_id = None
+    if is_connected:
+        try:
+            chain_id = w3.eth.chain_id
+        except Exception:
+            pass
+
+    return jsonify({
+        "status": "online",
+        "service": "ESITH Protocol Backend",
+        "blockchain_connected": is_connected,
+        "chain_id": chain_id,
+        "rpc_url": ACTIVE_RPC_URL
+    }), 200
+
+
+@app.route("/api/verify-transaction", methods=["POST"])
+def verify_transaction():
+    """
+    Verifies an Ethereum transaction receipt on-chain using Web3.py
+    and saves the verified record into the SQL database.
+    """
+    data = request.get_json() or {}
+    tx_hash = data.get("txHash") or data.get("tx_hash")
+    wallet_address = data.get("wallet") or data.get("wallet_address")
+    amount = data.get("amount")
+    tx_type = data.get("txType") or data.get("tx_type", "MINT")
+
+    # Input Validation
+    if not tx_hash or not wallet_address or amount is None:
+        return jsonify({
+            "status": "error",
+            "message": "Missing required parameters: tx_hash, wallet_address, and amount."
+        }), 400
+
+    try:
+        amount = float(amount)
+        if amount <= 0:
+            raise ValueError()
+    except ValueError:
+        return jsonify({"status": "error", "message": "Amount must be a positive number."}), 400
+
+    # Support for simulated transactions (bypasses RPC check if starting with 0xSIM)
+    if str(tx_hash).startswith("0xSIM"):
+        db = get_db()
+        try:
+            existing_tx = db.query(TransactionRecord).filter(TransactionRecord.tx_hash == tx_hash).first()
+            if not existing_tx:
+                db_record = TransactionRecord(
+                    tx_hash=tx_hash,
+                    wallet_address=wallet_address.lower(),
+                    tx_type=str(tx_type).upper(),
+                    amount_tokens=amount,
+                    cost_eth=amount * 0.001,
+                    block_number=1234567
+                )
+                db.add(db_record)
+                db.commit()
+            return jsonify({"status": "success", "message": "Simulated transaction logged successfully."}), 200
+        finally:
+            db.close()
+
+    if not w3.is_connected():
+        return jsonify({"status": "error", "message": "RPC provider is currently unreachable."}), 503
+
+    db = get_db()
+    try:
+        # Check if transaction was already processed
+        existing_tx = db.query(TransactionRecord).filter(TransactionRecord.tx_hash == tx_hash).first()
+        if existing_tx:
+            return jsonify({
+                "status": "success",
+                "message": "Transaction already verified and logged in database.",
+                "tx_id": existing_tx.id
+            }), 200
+
+        # Query RPC node for transaction receipt
+        try:
+            receipt = w3.eth.get_transaction_receipt(tx_hash)
+        except TransactionNotFound:
+            return jsonify({
+                "status": "error",
+                "message": "Transaction receipt not found on chain yet. It may be pending."
+            }), 404
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Web3 lookup error: {str(e)}"}), 400
+
+        # Verify execution status (1 = Success, 0 = Reverted/Failed)
+        if receipt.status != 1:
+            return jsonify({
+                "status": "error",
+                "message": "Transaction failed or was reverted on the blockchain."
+            }), 400
+
+        # Retrieve value (ETH cost) sent in the transaction
+        tx_detail = w3.eth.get_transaction(tx_hash)
+        eth_value = float(w3.from_wei(tx_detail.value, 'ether'))
+
+        # Insert record into database
+        db_record = TransactionRecord(
+            tx_hash=tx_hash,
+            wallet_address=wallet_address.lower(),
+            tx_type=str(tx_type).upper(),
+            amount_tokens=amount,
+            cost_eth=eth_value,
+            block_number=receipt.blockNumber
+        )
+        db.add(db_record)
+        db.commit()
+        db.refresh(db_record)
+
+        return jsonify({
+            "status": "success",
+            "message": "Transaction verified on-chain and logged successfully.",
+            "block_number": receipt.blockNumber,
+            "tx_id": db_record.id
+        }), 200
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({"status": "error", "message": f"Internal database error: {str(e)}"}), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/history/<wallet_address>", methods=["GET"])
+def get_wallet_history(wallet_address: str):
+    """Fetches all verified on-chain transactions for a specific wallet address."""
+    if not w3.is_address(wallet_address):
+        return jsonify({"status": "error", "message": "Invalid Ethereum address format."}), 400
+
+    db = get_db()
+    try:
+        records = db.query(TransactionRecord).filter(
+            TransactionRecord.wallet_address == wallet_address.lower()
+        ).order_by(TransactionRecord.created_at.desc()).all()
+
+        history = [
+            {
+                "tx_hash": tx.tx_hash,
+                "tx_type": tx.tx_type,
+                "amount": tx.amount_tokens,
+                "cost_eth": tx.cost_eth,
+                "block_number": tx.block_number,
+                "created_at": tx.created_at.isoformat()
+            } for tx in records
+        ]
+
+        return jsonify({
+            "status": "success",
+            "wallet": wallet_address.lower(),
+            "count": len(history),
+            "history": history
+        }), 200
+    finally:
+        db.close()
+
+
+@app.route("/api/register-wallet", methods=["POST"])
+def register_wallet():
+    """Registers a built-in web wallet generated on the frontend."""
+    data = request.get_json() or {}
+    address = data.get("address") or data.get("wallet")
+
+    if not address or not w3.is_address(address):
+        return jsonify({"status": "error", "message": "Valid Ethereum address required."}), 400
+
+    addr_clean = address.lower()
+    db = get_db()
+    try:
+        existing = db.query(WebWallet).filter(WebWallet.address == addr_clean).first()
+        if not existing:
+            new_wallet = WebWallet(address=addr_clean)
+            db.add(new_wallet)
+            db.commit()
+            return jsonify({"status": "created", "address": addr_clean}), 201
+        
+        return jsonify({"status": "exists", "address": addr_clean}), 200
+    finally:
+        db.close()
+
+
+# -------------------------------------------------------------------
+# 4. SERVER RUNNER
+# -------------------------------------------------------------------
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    print(f"🚀 ESITH Protocol Backend running on http://127.0.0.1:{port}")
+    app.run(host="0.0.0.0", port=port, debug=True)
