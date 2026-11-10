@@ -3,699 +3,541 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESITH Protocol — Presale & Web Wallet Simulator</title>
-    <!-- Ethers.js v6 CDN -->
+    <title>ESITH Protocol — Signed Mint & Gateway</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
-    <!-- QR Code Generator CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- Canvas Confetti CDN -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #06080d;
-            --card-bg: rgba(15, 21, 37, 0.75);
-            --card-hover-bg: rgba(22, 30, 52, 0.85);
+            --card-bg: rgba(15, 21, 37, 0.85);
             --border-color: rgba(255, 255, 255, 0.08);
             --border-highlight: rgba(99, 102, 241, 0.3);
             --primary-accent: #6366f1;
             --secondary-accent: #06b6d4;
             --success-color: #10b981;
-            --warning-color: #f59e0b;
-            --danger-color: #ef4444;
             --primary-gradient: linear-gradient(135deg, #6366f1 0%, #06b6d4 100%);
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
-            --text-subtle: #64748b;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
-        
-        body { 
-            background-color: var(--bg-color); 
-            color: var(--text-main); 
-            min-height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 16px;
-            background-image: 
-                radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 90% 90%, rgba(6, 182, 212, 0.1) 0%, transparent 45%);
-            background-attachment: fixed;
-        }
-
+        body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 16px; }
         .mono { font-family: 'JetBrains Mono', monospace; }
-
-        header { 
-            width: 100%; 
-            max-width: 1200px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            padding: 20px 0; 
-            border-bottom: 1px solid var(--border-color); 
-            margin-bottom: 24px; 
-        }
-
-        .logo-group { display: flex; align-items: center; gap: 12px; }
-        .logo { 
-            font-size: 1.4rem; 
-            font-weight: 800; 
-            background: var(--primary-gradient); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent; 
-            letter-spacing: -0.5px;
-        }
-
-        .network-badge {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: var(--success-color);
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 4px 10px;
-            border-radius: 20px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .network-dot { width: 6px; height: 6px; background-color: var(--success-color); border-radius: 50%; box-shadow: 0 0 8px var(--success-color); }
-
-        .header-actions { display: flex; align-items: center; gap: 12px; }
-
-        .wallet-badge {
-            background: rgba(99, 102, 241, 0.12);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            padding: 8px 16px;
-            border-radius: 12px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #818cf8;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .container { width: 100%; max-width: 1200px; display: grid; gap: 24px; }
-
-        .hero { text-align: center; margin-bottom: 4px; }
-        .hero-tag {
-            display: inline-block;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.25);
-            padding: 6px 16px;
-            border-radius: 20px;
-            color: #818cf8;
-            font-size: 0.8rem;
-            font-weight: 700;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .hero h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; margin-bottom: 10px; letter-spacing: -1px; }
-        .hero p { color: var(--text-muted); font-size: clamp(0.95rem, 1.8vw, 1.1rem); max-width: 680px; margin: 0 auto; line-height: 1.5; }
-
-        /* Simulation Switch Banner */
-        .simulation-banner {
-            background: rgba(16, 185, 129, 0.08);
-            border: 1px solid rgba(16, 185, 129, 0.25);
-            border-radius: 16px;
-            padding: 14px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.9rem;
-        }
-
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 24px;
-        }
-        @media (min-width: 960px) {
-            .main-grid { grid-template-columns: 1.1fr 0.9fr; }
-        }
-
-        .card { 
-            background: var(--card-bg); 
-            border: 1px solid var(--border-color); 
-            backdrop-filter: blur(20px); 
-            border-radius: 24px; 
-            padding: 28px; 
-            box-shadow: 0 12px 40px rgba(0,0,0,0.5); 
-            transition: border-color 0.3s ease;
-        }
-        .card:hover { border-color: var(--border-highlight); }
-
-        .card-title { 
-            font-size: 1.25rem; 
-            font-weight: 700; 
-            margin-bottom: 20px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-        }
-
-        .progress-wrapper { margin-bottom: 24px; }
-        .progress-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 8px; color: var(--text-muted); font-weight: 600; }
-        .progress-track { width: 100%; height: 12px; background: rgba(0,0,0,0.4); border-radius: 10px; overflow: hidden; border: 1px solid var(--border-color); }
-        .progress-fill { height: 100%; width: 42.5%; background: var(--primary-gradient); border-radius: 10px; transition: width 0.5s ease; box-shadow: 0 0 12px rgba(99, 102, 241, 0.5); }
-
+        header { width: 100%; max-width: 1100px; display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 24px; }
+        .logo { font-size: 1.4rem; font-weight: 800; background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .container { width: 100%; max-width: 1100px; display: grid; gap: 24px; }
+        .hero { text-align: center; margin-bottom: 10px; }
+        .hero h1 { font-size: 2.3rem; font-weight: 800; margin-bottom: 10px; }
+        .hero p { color: var(--text-muted); font-size: 1rem; }
+        .main-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+        @media(min-width: 900px) { .main-grid { grid-template-columns: 1.1fr 0.9fr; } }
+        .card { background: var(--card-bg); border: 1px solid var(--border-color); backdrop-filter: blur(20px); border-radius: 24px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+        .card-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
         .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 24px; }
-        .stat-box { 
-            background: rgba(0, 0, 0, 0.3); 
-            padding: 16px; 
-            border-radius: 16px; 
-            border: 1px solid var(--border-color);
-        }
-        .stat-box span { display: block; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; }
-        .stat-box strong { font-size: 1.15rem; color: #fff; font-weight: 700; word-break: break-all; }
-
+        .stat-box { background: rgba(0, 0, 0, 0.3); padding: 16px; border-radius: 16px; border: 1px solid var(--border-color); }
+        .stat-box span { display: block; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+        .stat-box strong { font-size: 1.15rem; color: #fff; word-break: break-all; }
         .form-group { margin-bottom: 20px; }
-        label { display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; }
-        
-        .input-wrapper { position: relative; display: flex; align-items: center; }
-        input, select { 
-            width: 100%; 
-            background: rgba(0, 0, 0, 0.4); 
-            border: 1px solid var(--border-color); 
-            border-radius: 14px; 
-            padding: 14px 16px; 
-            color: #fff; 
-            font-size: 0.95rem; 
-            outline: none; 
-            transition: all 0.2s;
-        }
-        input:focus { border-color: var(--primary-accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
-
-        .input-action {
-            position: absolute;
-            right: 12px;
-            background: rgba(99, 102, 241, 0.2);
-            color: #818cf8;
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 8px;
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .cost-calculator {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(99, 102, 241, 0.08);
-            border: 1px dashed rgba(99, 102, 241, 0.3);
-            border-radius: 14px;
-            padding: 14px 18px;
-            margin-bottom: 24px;
-            font-size: 0.95rem;
-        }
-
-        .btn { 
-            width: 100%;
-            background: var(--primary-gradient); 
-            color: white; 
-            border: none; 
-            padding: 15px; 
-            border-radius: 14px; 
-            font-weight: 700; 
-            font-size: 0.95rem; 
-            cursor: pointer; 
-            transition: all 0.2s; 
-            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn:hover { opacity: 0.95; transform: translateY(-1px); }
-        .btn-secondary { background: rgba(255, 255, 255, 0.06); box-shadow: none; border: 1px solid var(--border-color); color: var(--text-main); }
-        .btn-secondary:hover { background: rgba(255, 255, 255, 0.12); }
-        .btn-sm { padding: 8px 14px; font-size: 0.8rem; border-radius: 10px; width: auto; }
-
+        label { display: block; margin-bottom: 8px; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; }
+        input { width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px 16px; color: #fff; font-size: 0.95rem; outline: none; }
+        input:focus { border-color: var(--primary-accent); }
+        .btn { width: 100%; background: var(--primary-gradient); color: white; border: none; padding: 15px; border-radius: 14px; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: opacity 0.2s; margin-top: 6px; }
+        .btn:hover { opacity: 0.9; }
+        .btn-secondary { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-color); }
         .tab-nav { display: flex; gap: 8px; margin-bottom: 20px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 12px; border: 1px solid var(--border-color); }
-        .tab-btn { flex: 1; padding: 10px; background: transparent; border: none; border-radius: 8px; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
-        .tab-btn.active { background: var(--primary-accent); color: #fff; box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4); }
-
-        .address-book { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-        .address-tag { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
-        .address-tag:hover { background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); }
-
-        .tx-history { display: flex; flex-direction: column; gap: 10px; max-height: 240px; overflow-y: auto; padding-right: 4px; }
+        .tab-btn { flex: 1; padding: 10px; background: transparent; border: none; border-radius: 8px; color: var(--text-muted); font-weight: 600; cursor: pointer; }
+        .tab-btn.active { background: var(--primary-accent); color: #fff; }
+        .tx-history { display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto; }
         .tx-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.25); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border-color); font-size: 0.85rem; }
-        .tx-type { font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; }
-        .tx-in { color: var(--success-color); }
-        .tx-out { color: var(--primary-accent); }
+        .tx-in { color: var(--success-color); font-weight: 700; }
+        .tx-out { color: var(--primary-accent); font-weight: 700; }
+        #statusMessage { margin-top: 16px; padding: 14px; border-radius: 14px; font-size: 0.9rem; text-align: center; display: none; word-break: break-all; }
 
-        #statusMessage { 
-            margin-top: 16px; 
-            padding: 14px 18px; 
-            border-radius: 14px; 
-            font-size: 0.9rem; 
-            text-align: center; 
-            display: none; 
-            word-break: break-all;
-            line-height: 1.5;
-        }
-
-        .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(8px);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s ease;
-        }
-        .modal-overlay.active { opacity: 1; pointer-events: auto; }
-        .modal-body {
-            background: #0f172a;
-            border: 1px solid var(--border-highlight);
-            border-radius: 24px;
-            padding: 32px;
-            max-width: 420px;
-            width: 90%;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
-        }
-        #qrcode { display: flex; justify-content: center; margin: 20px 0; padding: 16px; background: white; border-radius: 16px; width: fit-content; margin-left: auto; margin-right: auto; }
+        /* Modal styling */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 7, 18, 0.85); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 1000; padding: 16px; }
+        .modal-content { background: #0f1525; border: 1px solid var(--border-highlight); width: 100%; max-width: 440px; border-radius: 24px; padding: 30px; box-shadow: 0 20px 50px rgba(0,0,0,0.7); animation: popIn 0.3s ease; }
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
 
-    <!-- Header Navigation -->
     <header>
-        <div class="logo-group">
-            <div class="logo">⚡ ESITH Protocol</div>
-            <div class="network-badge">
-                <div class="network-dot"></div>
-                Simulation Sandbox Mode
-            </div>
-        </div>
-        <div class="header-actions" id="headerActions">
-            <button class="btn btn-sm" onclick="scrollToWalletSetup()">Unlock Wallet</button>
+        <div class="logo">⚡ ESITH Protocol (Signed Minting)</div>
+        <div id="headerBadge">
+            <span style="color: var(--text-muted); font-size: 0.85rem;">Wallet Locked</span>
         </div>
     </header>
 
     <div class="container">
-        <!-- Hero Banner -->
         <div class="hero">
-            <span class="hero-tag">Interactive Presale Simulator</span>
             <h1>Decentralized Token Launchpad</h1>
-            <p>Simulate buying and transferring ESITH tokens instantly without needing a deployed contract or live network node.</p>
+            <p>Mint tokens with simulated cryptographic wallet pop-outs and authorized transaction signing!</p>
         </div>
 
-        <div class="simulation-banner">
-            <span>⚡ <strong>Simulation Mode Active:</strong> All transactions run locally in browser memory with simulated gas fees and instant block confirmation.</span>
-            <button class="btn btn-secondary btn-sm" onclick="resetSimulatedState()">Reset Demo Data</button>
-        </div>
-
-        <!-- App Main Interface -->
         <div class="main-grid" id="appInterface" style="display:none;">
-            
-            <!-- Left Panel: Launchpad Minting -->
+            <!-- Minting Card -->
             <div class="card">
-                <div class="card-title">
-                    <span>🚀 Token Presale</span>
-                    <span style="font-size: 0.8rem; color: var(--success-color); font-weight: 600;">● Active (Simulated)</span>
-                </div>
-
-                <!-- Launchpad Progress -->
-                <div class="progress-wrapper">
-                    <div class="progress-header">
-                        <span>Sale Allocation Raised</span>
-                        <span id="presaleProgressText">425,000 / 1,000,000 ESITH</span>
-                    </div>
-                    <div class="progress-track">
-                        <div class="progress-fill" id="progressFill" style="width: 42.5%;"></div>
-                    </div>
-                </div>
-
+                <div class="card-title">🚀 Token Presale</div>
                 <div class="stats-grid">
-                    <div class="stat-box">
-                        <span>Price per Token</span>
-                        <strong class="mono">0.0010 ETH</strong>
-                    </div>
-                    <div class="stat-box">
-                        <span>Max Cap</span>
-                        <strong>1,000,000 ESITH</strong>
-                    </div>
+                    <div class="stat-box"><span>Mint Fee</span><strong style="color: var(--secondary-accent);">0.0001 ETH</strong></div>
+                    <div class="stat-box"><span>Sepolia ETH Balance</span><strong id="ethBalanceDisplay" class="mono" style="color: #38bdf8;">0.50 ETH</strong></div>
                 </div>
+                <button class="btn btn-secondary" onclick="openGatewayModal()" style="margin-bottom: 20px; border-color: var(--secondary-accent); color: var(--secondary-accent);">💳 Top-Up ETH (Mastercard / PayPal)</button>
 
                 <div class="form-group">
-                    <label for="tokenAmount">
-                        <span>Purchase Quantity</span>
-                        <span style="color: var(--text-subtle);">Min 1 ESITH</span>
-                    </label>
-                    <div class="input-wrapper">
-                        <input type="number" id="tokenAmount" value="50" min="1" step="1">
-                        <button class="input-action" onclick="setQuickBuy(100)">100 ESITH</button>
-                    </div>
+                    <label>Purchase Quantity</label>
+                    <input type="number" id="tokenAmount" value="50" min="1">
                 </div>
-
-                <div class="cost-calculator">
-                    <span style="color: var(--text-muted); font-size: 0.9rem;">Estimated Total Cost:</span>
-                    <strong id="totalCostEth" class="mono" style="color: var(--secondary-accent);">0.0500 ETH</strong>
-                </div>
-
-                <button class="btn" id="buyButton">Mint ESITH Tokens (Simulated)</button>
+                <button class="btn" onclick="openSignModal()">Mint ESITH (Sign Transaction)</button>
             </div>
 
-            <!-- Right Panel: Built-in Web3 Wallet Dashboard -->
+            <!-- Wallet Dashboard Card -->
             <div class="card">
                 <div class="card-title">
-                    <span>👛 Built-in Web3 Wallet</span>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-secondary btn-sm" onclick="showDepositQR()">QR Code</button>
-                        <button class="btn btn-secondary btn-sm" onclick="exportWallet()">Backup</button>
-                    </div>
+                    <span>👛 Persistent Web3 Wallet</span>
+                    <button class="btn btn-secondary" style="width:auto; padding:6px 12px; font-size:0.75rem;" onclick="logoutWallet()">Logout / Switch</button>
                 </div>
-
-                <!-- Wallet Balances Overview -->
                 <div class="stats-grid">
-                    <div class="stat-box">
-                        <span>Address</span>
-                        <strong id="walletAddressDisplay" class="mono" style="font-size: 0.75rem;">0x...</strong>
-                    </div>
-                    <div class="stat-box">
-                        <span>ETH (Gas Fee)</span>
-                        <strong id="ethBalanceDisplay" class="mono">1.0000 ETH</strong>
-                    </div>
-                    <div class="stat-box" style="grid-column: span 2; background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.2);">
-                        <span>ESITH Balance</span>
-                        <strong id="esithBalanceDisplay" class="mono" style="color: #34d399; font-size: 1.35rem;">0.00 ESITH</strong>
+                    <div class="stat-box"><span>Active Address</span><strong id="walletAddressDisplay" class="mono" style="font-size: 0.75rem;">0x...</strong></div>
+                    <div class="stat-box" style="grid-column: span 2; background: rgba(99, 102, 241, 0.08);">
+                        <span>SQLite DB ESITH Balance</span>
+                        <strong id="esithBalanceDisplay" class="mono" style="color: #34d399; font-size: 1.35rem;">Fetching DB...</strong>
                     </div>
                 </div>
 
-                <!-- Wallet Action Tabs -->
                 <div class="tab-nav">
                     <button class="tab-btn active" onclick="switchTab('transfer')">Send P2P</button>
-                    <button class="tab-btn" onclick="switchTab('history')">History</button>
-                    <button class="tab-btn" onclick="switchTab('deposit')">Deposit ETH</button>
+                    <button class="tab-btn" onclick="switchTab('history')">Live History</button>
                 </div>
 
-                <!-- Tab 1: P2P Transfers -->
                 <div id="transferTab">
                     <div class="form-group">
-                        <label for="recipientAddress">Recipient Address</label>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                            <label>Recipient Address</label>
+                            <a href="javascript:void(0)" onclick="generateTestRecipient()" style="color:#818cf8; font-size:0.75rem; text-decoration:none;">🎲 Generate Test Contact</a>
+                        </div>
                         <input type="text" id="recipientAddress" class="mono" placeholder="0x...">
                     </div>
-                    
-                    <!-- Quick Address Book -->
-                    <div class="address-book">
-                        <span style="font-size: 0.75rem; color: var(--text-subtle); align-self: center;">Quick Contacts:</span>
-                        <span class="address-tag" onclick="quickFillAddress('0x70997970C51812dc3A010C7d01b50e0d17dc79C8')">Alice</span>
-                        <span class="address-tag" onclick="quickFillAddress('0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC')">Bob</span>
-                    </div>
-
                     <div class="form-group">
-                        <label for="transferAmount">Amount to Send</label>
-                        <div class="input-wrapper">
-                            <input type="number" id="transferAmount" value="5" min="0.1">
-                            <button class="input-action" onclick="setMaxTransfer()">MAX</button>
-                        </div>
+                        <label>Amount to Send</label>
+                        <input type="number" id="transferAmount" value="5" min="0.1">
                     </div>
-                    <button class="btn" id="sendButton">Transfer ESITH Instantly</button>
+                    <button class="btn" id="sendButton">Transfer ESITH Live</button>
                 </div>
 
-                <!-- Tab 2: On-chain History -->
                 <div id="historyTab" style="display:none;">
                     <div class="tx-history" id="txHistoryContainer">
-                        <div style="text-align: center; padding: 20px; color: var(--text-subtle); font-size: 0.85rem;">
-                            No recent activity recorded.
-                        </div>
+                        <div style="text-align: center; padding: 15px; color: var(--text-muted); font-size: 0.85rem;">Loading DB logs...</div>
                     </div>
-                </div>
-
-                <!-- Tab 3: Deposit ETH -->
-                <div id="depositTab" style="display:none;">
-                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5;">
-                        Simulated ETH balance is automatically topped up to 1.00 ETH for testing gas fees.
-                    </p>
-                    <button class="btn btn-secondary" onclick="topUpEth()">Top Up 1.00 ETH</button>
                 </div>
             </div>
         </div>
 
-        <!-- Initial Setup Card -->
-        <div class="card" id="setupCard" style="max-width: 520px; margin: 20px auto 0; text-align: center;">
-            <div class="card-title" style="justify-content: center;">Initialize Web3 Wallet</div>
-            <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 0.92rem; line-height: 1.6;">
-                Generate a simulated client-side web wallet keypair to begin testing the launchpad.
-            </p>
-            <button class="btn" onclick="createNewWallet()">Generate Web Wallet</button>
+        <!-- Wallet Setup Card -->
+        <div class="card" id="setupCard" style="max-width: 500px; margin: 0 auto; text-align: center;">
+            <div class="card-title" style="justify-content: center;">Access or Import Web3 Wallet</div>
+            <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 0.9rem;">Generate a fresh browser wallet or import an existing private key.</p>
+            <button class="btn" onclick="createNewWallet()">Generate New Browser Wallet</button>
+            <button class="btn btn-secondary" onclick="importWalletPrompt()">Login via Private Key</button>
         </div>
 
-        <!-- Status Banner -->
         <div id="statusMessage"></div>
     </div>
 
-    <!-- QR Modal -->
-    <div class="modal-overlay" id="qrModal">
-        <div class="modal-body">
-            <h3 style="font-size: 1.2rem; margin-bottom: 8px;">Deposit ETH</h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">Scan this QR code to view your wallet address.</p>
-            <div id="qrcode"></div>
-            <p id="modalAddressDisplay" class="mono" style="font-size: 0.75rem; color: var(--text-muted); word-break: break-all; margin-bottom: 16px;"></p>
-            <button class="btn btn-secondary" onclick="closeDepositQR()">Close</button>
+    <!-- Fiat Gateway Modal -->
+    <div class="modal-overlay" id="gatewayModal">
+        <div class="modal-content">
+            <div class="card-title" style="margin-bottom: 15px;">
+                <span>🔒 Secure Fiat Gateway</span>
+                <span style="cursor:pointer; color:var(--text-muted); font-size:1.2rem;" onclick="closeGatewayModal()">&times;</span>
+            </div>
+            
+            <div class="tab-nav" style="margin-bottom: 15px;">
+                <button class="tab-btn active" id="ccTabBtn" onclick="switchGatewayMethod('cc')">💳 Mastercard</button>
+                <button class="tab-btn" id="ppTabBtn" onclick="switchGatewayMethod('pp')">🅿️ PayPal</button>
+            </div>
+
+            <div class="form-group">
+                <label>Amount of ETH to Top-Up</label>
+                <input type="number" id="gatewayEthAmount" value="1.0" min="0.1" step="0.1">
+            </div>
+
+            <div id="ccForm">
+                <div class="form-group">
+                    <label>Cardholder Name</label>
+                    <input type="text" id="ccName" value="John Doe">
+                </div>
+                <div class="form-group">
+                    <label>Mastercard Number</label>
+                    <input type="text" id="ccNumber" class="mono" value="5412 7500 3491 8890" maxlength="19">
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label>Expiry (MM/YY)</label>
+                        <input type="text" class="mono" value="12/28">
+                    </div>
+                    <div class="form-group">
+                        <label>CVV</label>
+                        <input type="password" class="mono" value="992" maxlength="4">
+                    </div>
+                </div>
+            </div>
+
+            <div id="ppForm" style="display:none;">
+                <div class="form-group">
+                    <label>PayPal Email</label>
+                    <input type="email" id="ppEmail" value="user@esith-protocol.io">
+                </div>
+                <div class="form-group">
+                    <label>PayPal Password</label>
+                    <input type="password" id="ppPassword" value="••••••••••••">
+                </div>
+            </div>
+
+            <button class="btn" id="payNowBtn" onclick="executeGatewayPayment()">Authorize & Pay Securely</button>
+        </div>
+    </div>
+
+    <!-- Metamask-Style Transaction Sign Popout Modal -->
+    <div class="modal-overlay" id="signModal">
+        <div class="modal-content">
+            <div class="card-title" style="margin-bottom: 15px;">
+                <span>✍️ Signature Request</span>
+                <span style="cursor:pointer; color:var(--text-muted); font-size:1.2rem;" onclick="closeSignModal()">&times;</span>
+            </div>
+            <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:16px;">ESITH Protocol requests signature to execute smart contract minting.</p>
+            
+            <div class="stat-box" style="margin-bottom: 16px;">
+                <span>Transaction Payload</span>
+                <strong id="signPayloadSummary" class="mono" style="font-size:0.8rem; color:#818cf8;">Minting 50 ESITH (Fee: 0.0001 ETH)</strong>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:20px;">
+                <div class="stat-box"><span>Estimated Gas</span><strong>0.000021 ETH</strong></div>
+                <div class="stat-box"><span>Chain ID</span><strong>11155111 (Sepolia)</strong></div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-secondary" onclick="closeSignModal()">Reject</button>
+                <button class="btn" id="signConfirmBtn" onclick="executeSignedMint()">Sign & Broadcast</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // Simulated State Variables
         let currentWallet = null;
-        let simEthBalance = 1.0;
-        let simEsithBalance = 0.0;
-        let simPresaleRaised = 425000;
-        const TOKEN_PRICE_ETH = 0.001;
+        let syncInterval = null;
+        let cachedEsithBalance = 0;
+        let cachedEthBalance = 0;
+        const TOKEN_FEE_ETH = 0.0001;
 
-        window.addEventListener("DOMContentLoaded", () => {
-            const savedPrivateKey = localStorage.getItem("esith_sim_pk");
-            if (savedPrivateKey) {
+        // Success chime sound synthesizer
+        function playSuccessChime() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+                osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
+                
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.6);
+            } catch(e) {
+                console.log("Audio not supported.");
+            }
+        }
+
+        window.addEventListener("DOMContentLoaded", async () => {
+            const savedKey = localStorage.getItem("esith_db_wallet_pk");
+            if (savedKey) {
                 try {
-                    currentWallet = new ethers.Wallet(savedPrivateKey);
-                    activateWalletUI();
-                } catch (e) {}
+                    currentWallet = new ethers.Wallet(savedKey);
+                    await activateWalletUI();
+                } catch(e) {}
             }
-
-            // Restore saved simulated balances
-            if (localStorage.getItem("sim_esith_bal")) {
-                simEsithBalance = parseFloat(localStorage.getItem("sim_esith_bal"));
-            }
-            if (localStorage.getItem("sim_eth_bal")) {
-                simEthBalance = parseFloat(localStorage.getItem("sim_eth_bal"));
-            }
-
-            document.getElementById("tokenAmount").addEventListener("input", recalculateCost);
         });
 
-        function recalculateCost() {
-            const amount = parseFloat(document.getElementById("tokenAmount").value) || 0;
-            document.getElementById("totalCostEth").innerText = `${(amount * TOKEN_PRICE_ETH).toFixed(4)} ETH`;
-        }
-
-        function createNewWallet() {
+        async function createNewWallet() {
             const wallet = ethers.Wallet.createRandom();
-            localStorage.setItem("esith_sim_pk", wallet.privateKey);
-            currentWallet = wallet;
-            triggerConfetti();
-            activateWalletUI();
+            await loginWallet(wallet.privateKey);
         }
 
-        function exportWallet() {
-            if (currentWallet) {
-                prompt("Your Private Key (Simulated Storage):", currentWallet.privateKey);
+        async function importWalletPrompt() {
+            const pk = prompt("Enter the private key of the wallet to log into (starting with 0x):");
+            if (pk) {
+                try {
+                    const wallet = new ethers.Wallet(pk.trim());
+                    await loginWallet(wallet.privateKey);
+                } catch(e) {
+                    alert("Invalid private key format.");
+                }
             }
         }
 
-        function scrollToWalletSetup() {
-            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        async function loginWallet(privateKey) {
+            const wallet = new ethers.Wallet(privateKey);
+            localStorage.setItem("esith_db_wallet_pk", wallet.privateKey);
+            currentWallet = wallet;
+            
+            await fetch('/api/register-wallet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: wallet.address })
+            });
+
+            await activateWalletUI();
+            showStatus("Wallet connected successfully!", "success");
         }
 
-        function activateWalletUI() {
+        function logoutWallet() {
+            if (syncInterval) clearInterval(syncInterval);
+            localStorage.removeItem("esith_db_wallet_pk");
+            currentWallet = null;
+            document.getElementById("setupCard").style.display = "block";
+            document.getElementById("appInterface").style.display = "none";
+            document.getElementById("headerBadge").innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem;">Wallet Locked</span>`;
+            showStatus("Logged out.", "info");
+        }
+
+        async function activateWalletUI() {
             document.getElementById("setupCard").style.display = "none";
             document.getElementById("appInterface").style.display = "grid";
-            
-            const addr = currentWallet.address;
-            document.getElementById("walletAddressDisplay").innerText = addr;
-            document.getElementById("headerActions").innerHTML = `
-                <div class="wallet-badge">
-                    <span>🟢 Connected:</span> <span class="mono">${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}</span>
+            document.getElementById("walletAddressDisplay").innerText = currentWallet.address;
+            document.getElementById("headerBadge").innerHTML = `
+                <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--success-color); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">
+                    🟢 DB Synced
                 </div>
             `;
-            updateUIBalances();
-        }
-
-        function updateUIBalances() {
-            document.getElementById("ethBalanceDisplay").innerText = `${simEthBalance.toFixed(4)} ETH`;
-            document.getElementById("esithBalanceDisplay").innerText = `${simEsithBalance.toLocaleString()} ESITH`;
             
-            // Update presale progress bar
-            const pct = (simPresaleRaised / 1000000) * 100;
-            document.getElementById("progressFill").style.width = `${pct.toFixed(1)}%`;
-            document.getElementById("presaleProgressText").innerText = `${simPresaleRaised.toLocaleString()} / 1,000,000 ESITH`;
-
-            // Save to localStorage
-            localStorage.setItem("sim_esith_bal", simEsithBalance);
-            localStorage.setItem("sim_eth_bal", simEthBalance);
+            await syncDatabaseState();
+            if (syncInterval) clearInterval(syncInterval);
+            syncInterval = setInterval(syncDatabaseState, 2000);
         }
 
-        function topUpEth() {
-            simEthBalance += 1.0;
-            updateUIBalances();
-            showStatus("Simulated wallet topped up with +1.00 ETH!", "success");
+        async function syncDatabaseState() {
+            if (!currentWallet) return;
+            try {
+                const res = await fetch(`/api/wallet-state/${currentWallet.address}`);
+                const data = await res.json();
+                if (data.status === "success") {
+                    cachedEsithBalance = data.esith_balance;
+                    cachedEthBalance = data.eth_balance;
+
+                    document.getElementById("esithBalanceDisplay").innerText = `${cachedEsithBalance.toLocaleString()} ESITH`;
+                    document.getElementById("ethBalanceDisplay").innerText = `${cachedEthBalance.toFixed(4)} ETH`;
+                    
+                    const container = document.getElementById("txHistoryContainer");
+                    if (data.history.length > 0) {
+                        container.innerHTML = "";
+                        data.history.forEach(tx => {
+                            const isIncoming = tx.is_incoming;
+                            const item = document.createElement("div");
+                            item.className = "tx-item";
+                            let label = tx.tx_type === 'MINT' ? '↓ Minted' : (isIncoming ? '↓ Received from ' + tx.counterparty.substring(0,6)+'...' : '↑ Sent to ' + tx.counterparty.substring(0,6)+'...');
+                            
+                            item.innerHTML = `
+                                <div>
+                                    <div class="${isIncoming ? 'tx-in' : 'tx-out'}">${label}</div>
+                                    <div style="color: var(--text-muted); font-size: 0.7rem;" class="mono">${tx.tx_hash.substring(0, 10)}...</div>
+                                </div>
+                                <div class="mono">${isIncoming ? '+' : '-'}${tx.amount} ESITH</div>
+                            `;
+                            container.appendChild(item);
+                        });
+                    } else {
+                        container.innerHTML = `<div style="text-align: center; padding: 15px; color: var(--text-muted); font-size: 0.85rem;">No transactions recorded yet.</div>`;
+                    }
+                }
+            } catch (e) {
+                console.error("Live sync error:", e);
+            }
         }
 
-        function resetSimulatedState() {
-            simEthBalance = 1.0;
-            simEsithBalance = 0.0;
-            simPresaleRaised = 425000;
-            updateUIBalances();
-            showStatus("Simulated state reset to default values.", "info");
+        // Modals
+        function openGatewayModal() { document.getElementById("gatewayModal").style.display = "flex"; }
+        function closeGatewayModal() { document.getElementById("gatewayModal").style.display = "none"; }
+        function switchGatewayMethod(method) {
+            document.getElementById("ccTabBtn").classList.toggle("active", method === 'cc');
+            document.getElementById("ppTabBtn").classList.toggle("active", method === 'pp');
+            document.getElementById("ccForm").style.display = method === 'cc' ? 'block' : 'none';
+            document.getElementById("ppForm").style.display = method === 'pp' ? 'block' : 'none';
         }
 
-        function setQuickBuy(val) {
-            document.getElementById("tokenAmount").value = val;
-            recalculateCost();
+        function openSignModal() {
+            const amount = parseFloat(document.getElementById("tokenAmount").value);
+            if (!amount || amount <= 0) return alert("Enter valid quantity");
+            if (cachedEthBalance < TOKEN_FEE_ETH) {
+                alert("Insufficient ETH! Please click 'Top-Up ETH' to add funds via Mastercard or PayPal.");
+                return;
+            }
+            document.getElementById("signPayloadSummary").innerText = `Minting ${amount} ESITH (Fee: ${TOKEN_FEE_ETH} ETH)`;
+            document.getElementById("signModal").style.display = "flex";
+        }
+        function closeSignModal() { document.getElementById("signModal").style.display = "none"; }
+
+        // Secure Fiat Gateway Top-Up
+        async function executeGatewayPayment() {
+            const ethAmount = parseFloat(document.getElementById("gatewayEthAmount").value);
+            if (!ethAmount || ethAmount <= 0) return alert("Enter valid ETH amount.");
+
+            const payBtn = document.getElementById("payNowBtn");
+            payBtn.disabled = true;
+
+            let secondsLeft = 5;
+            payBtn.innerText = `🔒 Authorizing Payment (${secondsLeft}s)...`;
+            showStatus("Connecting to bank network...", "info");
+
+            const timer = setInterval(() => {
+                secondsLeft--;
+                if (secondsLeft > 0) payBtn.innerText = `🔒 Authorizing Payment (${secondsLeft}s)...`;
+            }, 1000);
+
+            setTimeout(async () => {
+                clearInterval(timer);
+                try {
+                    const res = await fetch('/api/topup-eth', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ wallet: currentWallet.address, amount_eth: ethAmount })
+                    });
+                    const data = await res.json();
+                    if (data.status === "success") {
+                        playSuccessChime();
+                        try { confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } }); } catch(e){}
+                        showStatus(`Payment Approved! Added ${ethAmount} ETH.`, "success");
+                        closeGatewayModal();
+                        await syncDatabaseState();
+                    } else {
+                        showStatus("Gateway error: " + data.message, "error");
+                    }
+                } catch(e) {
+                    showStatus("Network connection error.", "error");
+                }
+                payBtn.disabled = false;
+                payBtn.innerText = "Authorize & Pay Securely";
+            }, 5000);
         }
 
-        function quickFillAddress(addr) {
-            document.getElementById("recipientAddress").value = addr;
+        // Signed Mint Execution with 3s Signing Loader & Chime Sound
+        async function executeSignedMint() {
+            const amount = parseFloat(document.getElementById("tokenAmount").value);
+            const signBtn = document.getElementById("signConfirmBtn");
+            signBtn.disabled = true;
+
+            let secondsLeft = 3;
+            signBtn.innerText = `✍️ Signing (${secondsLeft}s)...`;
+            showStatus("Waiting for wallet signature authorization...", "info");
+
+            const timer = setInterval(() => {
+                secondsLeft--;
+                if (secondsLeft > 0) signBtn.innerText = `✍️ Signing (${secondsLeft}s)...`;
+            }, 1000);
+
+            setTimeout(async () => {
+                clearInterval(timer);
+                closeSignModal();
+                signBtn.disabled = false;
+                signBtn.innerText = "Sign & Broadcast";
+
+                const simTxHash = "0xSIM_MINT_" + Math.random().toString(16).substring(2);
+
+                try {
+                    const response = await fetch('/api/verify-transaction', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            txHash: simTxHash,
+                            wallet: currentWallet.address,
+                            amount: amount,
+                            txType: "MINT"
+                        })
+                    });
+                    const result = await response.json();
+                    if (result.status === "success") {
+                        playSuccessChime(); // Play completion sound effect
+                        try { confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } }); } catch(e){}
+                        showStatus(`Successfully minted ${amount} ESITH! Transaction signed & recorded in DB.`, "success");
+                        await syncDatabaseState();
+                    } else {
+                        showStatus("Error: " + result.message, "error");
+                    }
+                } catch(e) {
+                    showStatus("Network error connecting to backend.", "error");
+                }
+            }, 3000);
         }
 
-        function setMaxTransfer() {
-            document.getElementById("transferAmount").value = simEsithBalance;
+        async function generateTestRecipient() {
+            const testWallet = ethers.Wallet.createRandom();
+            document.getElementById("recipientAddress").value = testWallet.address;
+            await fetch('/api/register-wallet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: testWallet.address })
+            });
+            alert(`Generated test wallet: ${testWallet.address}\n\nPrivate key for second browser:\n${testWallet.privateKey}`);
         }
 
         function switchTab(tab) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('transferTab').style.display = 'none';
-            document.getElementById('historyTab').style.display = 'none';
-            document.getElementById('depositTab').style.display = 'none';
-
-            if (tab === 'transfer') {
-                document.getElementById('transferTab').style.display = 'block';
-            } else if (tab === 'history') {
-                document.getElementById('historyTab').style.display = 'block';
-            } else {
-                document.getElementById('depositTab').style.display = 'block';
-            }
+            document.getElementById('transferTab').style.display = tab === 'transfer' ? 'block' : 'none';
+            document.getElementById('historyTab').style.display = tab === 'history' ? 'block' : 'none';
             event.target.classList.add('active');
         }
 
-        function showDepositQR() {
-            if (!currentWallet) return;
-            const modal = document.getElementById("qrModal");
-            const qrContainer = document.getElementById("qrcode");
-            qrContainer.innerHTML = "";
-            new QRCode(qrContainer, { text: currentWallet.address, width: 160, height: 160 });
-            document.getElementById("modalAddressDisplay").innerText = currentWallet.address;
-            modal.classList.add("active");
+        function showStatus(msg, type="info") {
+            const el = document.getElementById("statusMessage");
+            el.style.display = "block";
+            el.style.background = type === "success" ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)";
+            el.style.color = type === "success" ? "#34d399" : "#818cf8";
+            el.innerText = msg;
         }
 
-        function closeDepositQR() {
-            document.getElementById("qrModal").classList.remove("active");
-        }
-
-        function appendTxHistory(type, amount, target) {
-            const container = document.getElementById("txHistoryContainer");
-            if (container.children[0] && container.children[0].innerText.includes("No recent activity")) {
-                container.innerHTML = "";
-            }
-            const isBuy = type === 'MINT';
-            const item = document.createElement("div");
-            item.className = "tx-item";
-            item.innerHTML = `
-                <div>
-                    <div class="tx-type ${isBuy ? 'tx-in' : 'tx-out'}">${isBuy ? '↓ Minted Tokens (Sim)' : '↑ Transferred (Sim)'}</div>
-                    <div style="color: var(--text-subtle); font-size: 0.75rem;" class="mono">${target.substring(0, 10)}...</div>
-                </div>
-                <div class="mono" style="font-weight:700;">${isBuy ? '+' : '-'}${amount} ESITH</div>
-            `;
-            container.prepend(item);
-        }
-
-        function triggerConfetti() {
-            try { confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } }); } catch (e) {}
-        }
-
-        function showStatus(msg, type = "info") {
-            const statusEl = document.getElementById("statusMessage");
-            statusEl.style.display = "block";
-            statusEl.innerText = msg;
-
-            if (type === "success") {
-                statusEl.style.background = "rgba(16, 185, 129, 0.15)";
-                statusEl.style.color = "#34d399";
-                statusEl.style.border = "1px solid rgba(16, 185, 129, 0.3)";
-            } else if (type === "error") {
-                statusEl.style.background = "rgba(239, 68, 68, 0.15)";
-                statusEl.style.color = "#f87171";
-                statusEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
-            } else {
-                statusEl.style.background = "rgba(99, 102, 241, 0.15)";
-                statusEl.style.color = "#818cf8";
-                statusEl.style.border = "1px solid rgba(99, 102, 241, 0.3)";
-            }
-        }
-
-        // SIMULATED MINTING
-        document.getElementById("buyButton").addEventListener("click", () => {
-            const amount = parseFloat(document.getElementById("tokenAmount").value);
-            if (!amount || amount <= 0) return alert("Enter a valid amount.");
-
-            const cost = amount * TOKEN_PRICE_ETH;
-            if (simEthBalance < cost) {
-                showStatus(`Insufficient simulated ETH! Need ${cost.toFixed(4)} ETH. Top up under Deposit ETH tab.`, "error");
-                return;
-            }
-
-            showStatus("Simulating blockchain block confirmation...", "info");
-
-            setTimeout(() => {
-                simEthBalance -= cost;
-                simEsithBalance += amount;
-                simPresaleRaised += amount;
-
-                updateUIBalances();
-                triggerConfetti();
-                appendTxHistory('MINT', amount, "0xPresaleContractAddress");
-                showStatus(`Success! Minted ${amount} ESITH tokens in simulated mode!`, "success");
-            }, 800);
-        });
-
-        // SIMULATED P2P TRANSFER
-        document.getElementById("sendButton").addEventListener("click", () => {
+        // P2P Transfers
+        document.getElementById("sendButton").addEventListener("click", async () => {
             const recipient = document.getElementById("recipientAddress").value.trim();
             const amount = parseFloat(document.getElementById("transferAmount").value);
 
-            if (!ethers.isAddress(recipient)) {
-                alert("Please enter a valid destination address.");
-                return;
+            if (!ethers.isAddress(recipient)) return alert("Enter a valid recipient address.");
+            if (!amount || amount <= 0) return alert("Enter a valid amount.");
+            if (amount > cachedEsithBalance) return alert(`Insufficient balance! You only have ${cachedEsithBalance} ESITH.`);
+            if (recipient.toLowerCase() === currentWallet.address.toLowerCase()) return alert("Cannot transfer to your own wallet.");
+
+            showStatus("Executing transfer & logging to database...", "info");
+            const simTxHash = "0xSIM_SEND_" + Math.random().toString(16).substring(2);
+
+            try {
+                const response = await fetch('/api/verify-transaction', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        txHash: simTxHash,
+                        wallet: currentWallet.address,
+                        amount: amount,
+                        txType: "TRANSFER",
+                        recipient: recipient
+                    })
+                });
+                const result = await response.json();
+                if (result.status === "success") {
+                    playSuccessChime();
+                    try { confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } }); } catch(e){}
+                    showStatus(`Successfully transferred ${amount} ESITH live!`, "success");
+                    await syncDatabaseState();
+                } else {
+                    showStatus("Error: " + result.message, "error");
+                }
+            } catch(e) {
+                showStatus("Network error connecting to backend.", "error");
             }
-
-            if (!amount || amount <= 0 || amount > simEsithBalance) {
-                showStatus("Insufficient ESITH balance for transfer.", "error");
-                return;
-            }
-
-            showStatus("Signing simulated P2P transaction...", "info");
-
-            setTimeout(() => {
-                simEsithBalance -= amount;
-                updateUIBalances();
-                triggerConfetti();
-                appendTxHistory('TRANSFER', amount, recipient);
-                showStatus(`Successfully transferred ${amount} ESITH to ${recipient.substring(0, 6)}...!`, "success");
-            }, 800);
         });
     </script>
 </body>
