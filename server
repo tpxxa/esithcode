@@ -159,88 +159,120 @@ def get_wallet_state(wallet_address: str):
 
 @app.route("/api/topup-eth", methods=["POST"])
 def topup_eth():
-    """Adds simulated purchased ETH to the user's account."""
-    data = request.get_json() or {}
+    """Credits simulated demo ETH to a registered wallet (not a real purchase)."""
+    data = request.get_json(silent=True) or {}
     wallet_address = data.get("wallet") or data.get("wallet_address")
-    amount_eth = float(data.get("amount_eth", 1.0))
 
-    if not wallet_address:
-        return jsonify({"status": "error", "message": "Wallet required."}), 400
+    try:
+        amount_eth = float(data.get("amount_eth", 0))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid ETH amount."}), 400
 
+    if not wallet_address or not w3.is_address(wallet_address):
+        return jsonify({"status": "error", "message": "A valid wallet address is required."}), 400
+    if not (0 < amount_eth <= 100):
+        return jsonify({"status": "error", "message": "Top-up amount must be greater than 0 and no more than 100 demo ETH."}), 400
+
+    addr = wallet_address.lower().strip()
     db = get_db()
     try:
-        addr = wallet_address.lower().strip()
         wallet_obj = db.query(WebWallet).filter(WebWallet.address == addr).first()
-        if not wallet_obj:
-            wallet_obj = WebWallet(address=addr, eth_balance=amount_eth)
+        if wallet_obj is None:
+            wallet_obj = WebWallet(address=addr, eth_balance=0.0)
             db.add(wallet_obj)
-        else:
-            wallet_obj.eth_balance += amount_eth
+            db.flush()
+
+        wallet_obj.eth_balance = float(wallet_obj.eth_balance or 0.0) + amount_eth
         db.commit()
-        return jsonify({"status": "success", "new_eth_balance": wallet_obj.eth_balance}), 200
+        db.refresh(wallet_obj)
+        return jsonify({
+            "status": "success",
+            "wallet": addr,
+            "credited_eth": amount_eth,
+            "new_eth_balance": float(wallet_obj.eth_balance)
+        }), 200
     except Exception as e:
         db.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        app.logger.exception("ETH demo top-up failed")
+        return jsonify({"status": "error", "message": "Top-up could not be saved."}), 500
     finally:
         db.close()
 
 
 @app.route("/api/verify-transaction", methods=["POST"])
 def verify_transaction():
-    data = request.get_json() or {}
+    """Records demo mint/transfer activity and deducts the demo mint fee."""
+    data = request.get_json(silent=True) or {}
     tx_hash = data.get("txHash") or data.get("tx_hash")
     wallet_address = data.get("wallet") or data.get("wallet_address")
-    amount = data.get("amount")
-    tx_type = data.get("txType") or data.get("tx_type", "MINT")
     recipient = data.get("recipient")
-
-    if not tx_hash or not wallet_address or amount is None:
-        return jsonify({"status": "error", "message": "Missing required parameters."}), 400
+    tx_type = str(data.get("txType") or data.get("tx_type") or "MINT").upper().strip()
 
     try:
-        amount = float(amount)
-        if amount <= 0:
-            raise ValueError()
-    except ValueError:
-        return jsonify({"status": "error", "message": "Invalid amount."}), 400
+        amount = float(data.get("amount"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid token amount."}), 400
 
+    if not tx_hash or not wallet_address or not w3.is_address(wallet_address):
+        return jsonify({"status": "error", "message": "A valid wallet and transaction reference are required."}), 400
+    if not (0 < amount <= 1_000_000_000):
+        return jsonify({"status": "error", "message": "Token amount must be greater than zero."}), 400
+    if tx_type not in ("MINT", "TRANSFER"):
+        return jsonify({"status": "error", "message": "Unsupported transaction type."}), 400
+    if tx_type == "TRANSFER" and (not recipient or not w3.is_address(recipient)):
+        return jsonify({"status": "error", "message": "A valid recipient address is required for transfers."}), 400
+
+    sender_clean = wallet_address.lower().strip()
+    recipient_clean = recipient.lower().strip() if recipient else None
     db = get_db()
     try:
-        sender_clean = wallet_address.lower().strip()
-        recipient_clean = recipient.lower().strip() if recipient else None
-
         existing_tx = db.query(TransactionRecord).filter(TransactionRecord.tx_hash == tx_hash).first()
         if existing_tx:
-            return jsonify({"status": "success", "message": "Already logged.", "tx_id": existing_tx.id}), 200
+            return jsonify({"status": "success", "message": "Transaction already recorded.", "tx_id": existing_tx.id}), 200
 
         ensure_wallet_registered(db, sender_clean)
-        if recipient_clean:
-            ensure_wallet_registered(db, recipient_clean)
+        wallet_obj = db.query(WebWallet).filter(WebWallet.address == sender_clean).first()
+        if wallet_obj is None:
+            wallet_obj = WebWallet(address=sender_clean, eth_balance=0.0)
+            db.add(wallet_obj)
+            db.flush()
 
-        # Deduct 0.0001 ETH fee if minting
         if tx_type == "MINT":
-            wallet_obj = db.query(WebWallet).filter(WebWallet.address == sender_clean).first()
-            if wallet_obj:
-                if wallet_obj.eth_balance < 0.0001:
-                    return jsonify({"status": "error", "message": "Insufficient ETH balance to cover 0.0001 ETH fee. Please use Gateway Top-Up!"}), 400
-                wallet_obj.eth_balance -= 0.0001
+            fee = 0.0001
+            current_balance = float(wallet_obj.eth_balance or 0.0)
+            # Small epsilon avoids floating-point edge cases at the exact fee.
+            if current_balance + 1e-12 < fee:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Insufficient demo ETH. Required: {fee:.4f} ETH; available: {current_balance:.8f} ETH. Top up and try again."
+                }), 400
+            wallet_obj.eth_balance = max(0.0, current_balance - fee)
+            cost_eth = fee
+        else:
+            ensure_wallet_registered(db, recipient_clean)
+            cost_eth = 0.0
 
         db_record = TransactionRecord(
             tx_hash=tx_hash,
             sender_address=sender_clean,
             recipient_address=recipient_clean,
-            tx_type=str(tx_type).upper(),
+            tx_type=tx_type,
             amount_tokens=amount,
-            cost_eth=0.0001 if tx_type == "MINT" else 0.0,
-            block_number=999999
+            cost_eth=cost_eth,
+            block_number=None
         )
         db.add(db_record)
         db.commit()
-
-        return jsonify({"status": "success", "message": "Transaction recorded successfully.", "tx_id": db_record.id}), 200
-    except Exception as e:
+        return jsonify({
+            "status": "success",
+            "message": "Demo transaction recorded successfully.",
+            "tx_id": db_record.id,
+            "eth_balance": float(wallet_obj.eth_balance)
+        }), 200
+    except Exception:
         db.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        app.logger.exception("Transaction recording failed")
+        return jsonify({"status": "error", "message": "Transaction could not be recorded."}), 500
     finally:
         db.close()
 
@@ -252,14 +284,17 @@ def register_wallet():
     if not address:
         return jsonify({"status": "error", "message": "Address required."}), 400
 
+    if not w3.is_address(address):
+        return jsonify({"status": "error", "message": "Invalid wallet address."}), 400
+
     addr_clean = address.lower().strip()
     db = get_db()
     try:
         existing = db.query(WebWallet).filter(WebWallet.address == addr_clean).first()
         if not existing:
-            db.add(WebWallet(address=addr_clean, eth_balance=0.5))
+            db.add(WebWallet(address=addr_clean, eth_balance=0.0))
             db.commit()
-            return jsonify({"status": "created", "address": addr_clean}), 201
+            return jsonify({"status": "created", "address": addr_clean, "eth_balance": 0.0}), 201
         return jsonify({"status": "exists", "address": addr_clean}), 200
     finally:
         db.close()
